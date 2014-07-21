@@ -1,6 +1,6 @@
 {
     "title": "Encrypted Section Widget",
-    "version": "0.1",
+    "version": "0.2",
     "name": "EncryptedSection",
     "description": "Strong client side encryption for text sections",
     "author": "Doogie.de"
