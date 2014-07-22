@@ -72,7 +72,7 @@ var IpWidget_EncryptedSectionWidget = function() {
      * If the password is already stored in this session, then the section will be decrypted immidiately.
      */
     this.unlockSection = function(newPassword) {
-        $("#unlockSymbol").tooltip("close");
+        $(".encUnlockSymbol").tooltip("close");
         debout("TRACE", "unlockSection(data.encrypted='"+this.data.encrypted+"' "+(newPassword ? "with" : "without")+" password given)");
         this.password = newPassword || this.password;
         if (this.password) {
