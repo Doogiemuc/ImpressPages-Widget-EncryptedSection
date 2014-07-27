@@ -34,11 +34,11 @@ var IpWidget_EncryptedSectionWidget = function() {
         data.isLocked = true;
         this.data     = data;
 
-        // jQueryUI tooltip for lock symbol
+        // Bootstrap tooltip for lock symbol 
+        // Be careful, JQueryUI also has a $().tooltip() method, which is overwritten by bootstrap.js   https://github.com/twbs/bootstrap/issues/6303
         $widgetObject.find(".encUnlockSymbol").tooltip({
-            content: data.encrypted ? "Click to unlock this section." : "Click to set initial password.",
-            position: { my: "left center", at: "right+10 center"},
-            hide: 0  // hide immideately, no fade
+            animation: false,
+            placement: "right"
         });
        
         $widgetObject.find(".encUnlockSymbol").click(
@@ -61,18 +61,17 @@ var IpWidget_EncryptedSectionWidget = function() {
 
 
     /**
-     * Initially every encrypted section is locked. When clicking the lock symbol, the section can be unlocked.
+     * Initially every encrypted section is locked.
+     * When clicking the lock symbol for the first time, user must set an initial password.
+     * From then on the section can be locked and unlocked with this password.
      * 
-     * If the user alreay provided the password in this session, then the section is immidiately decrypted.
-     * If the section contains encrypted content, then the user is asked for a password and the section is decrypted.
-     * Otherwise the 
-     * 
-     * If the section is still empty, e.g. newly added, the user will be asked to set a password.
-     * If the section already contains encrypted data, then the user will be asked for the password to decrypt.
-     * If the password is already stored in this session, then the section will be decrypted immidiately.
+     * If there is already a password, e.g. because it was already entered before,
+     *   then the section is immediately decrypted with that password.
+     * Otherwise if there is encrytped content, then the user will be asked for the password (popup).
+     * If the section is still empty, then the user can set an initial password.
      */
     this.unlockSection = function(newPassword) {
-        $(".encUnlockSymbol").tooltip("close");
+        //$(".encUnlockSymbol").tooltip("close");
         debout("TRACE", "unlockSection(data.encrypted='"+this.data.encrypted+"' "+(newPassword ? "with" : "without")+" password given)");
         this.password = newPassword || this.password;
         if (this.password) {
@@ -83,9 +82,9 @@ var IpWidget_EncryptedSectionWidget = function() {
                 //MAYBE: change background of .encryptedSection
                 this.initTinyMCE();
             } catch (errorMsg) {
-                debout("INFO: "+errorMsg);
+                console.log("INFO: "+errorMsg);
                 this.password = null;
-                alert("Wrong password!");
+                alert("Wrong password!");  //TODO: Show nicer validation error message below the password field. 
             }
         } else {
             if (this.data.encrypted) {
@@ -109,9 +108,9 @@ var IpWidget_EncryptedSectionWidget = function() {
          this.widgetObject.find('.encryptedSection').tinymce().remove();
          var newPlaintText = this.widgetObject.find('.encryptedSection').html();
          var encryptedData = encrypt(newPlaintText, this.password);
-         console.log('EncryptedSection.lockSection(): data.encrypted='+encryptedData.encrypted);
+         debout("TRACE", "EncryptedSection.lockSection()");
          // Only send the encrypted data to the server! And we do not reload the widget, so that the user can keep editing.
-         this.widgetObject.save(encryptedData, true);  // true -> reload section (in locked state)
+         this.widgetObject.save(encryptedData, true);           // true -> reload section (in locked state)
      }
      
      /*
@@ -123,27 +122,32 @@ var IpWidget_EncryptedSectionWidget = function() {
             debout("ERROR", "Cannot initTinyMCE. Password is not set.");
             return;
         }     
-         
+        var widgetObject = this.widgetObject;
+        var password     = this.password;
+        var that = this;
+        
         // prepare a fully featured TinyMce
         var customTinyMceConfig      = ipTinyMceConfig();
-        //TODO: may be don't allow file_browser_callback, because  this is insecure. External files won't be encrypted.
         customTinyMceConfig.plugins  = customTinyMceConfig.plugins + " advlist autolink lists link image charmap print preview anchor searchreplace visualblocks code fullscreen insertdatetime media table contextmenu paste textcolor";
         customTinyMceConfig.menubar  = false;
         customTinyMceConfig.toolbar  = "lock | undo redo | styleselect forecolor | bold italic underline strikethrough | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | link image";
         customTinyMceConfig.toolbar1 = null;
         customTinyMceConfig.toolbar2 = null;
-
-        // when content changes, encrypt it on the client, ie. in the browser, and autosave it to our impresspages backend
-        var widgetObject = this.widgetObject;
-        var password     = this.password;
-        var that = this;
+        //customTinyMceConfig.auto_focus = ... doesn't seem to work :-( so we use init_instance_callback to set focus (puh, this bugfix took a while to find out)
+        customTinyMceConfig.init_instance_callback = function(editor) {
+            editor.focus();
+        }
+        //TODO: may be don't allow file_browser_callback, because  this is insecure. External files won't be encrypted.
+        
         customTinyMceConfig.setup = function(editor) { 
+            // add 'lock' entry into TinyMCE toolbar
             editor.addButton('lock', {
                 text: 'Lock',
                 icon: "save",  // 'mce-save' is a TinyMCE default icon from http://icomoon.io
-                style: "background: #B00",
+                style: "background: #C00",
                 onclick: $.proxy(that.lockSection, that)
             });
+            // when content changes, encrypt it on the client, ie. in the browser, and autosave it to our impresspages backend
             editor.on('change', $.proxy( function(evt) {
                 var newPlaintText = widgetObject.find('.encryptedSection').html();
                 var encryptedData = encrypt(newPlaintText, password);
@@ -154,8 +158,6 @@ var IpWidget_EncryptedSectionWidget = function() {
         };
         
         this.widgetObject.find('.encryptedSection').tinymce(customTinyMceConfig);
-        this.widgetObject.find('.encryptedSection').focus();
-        
     };
 
     /**
@@ -173,12 +175,8 @@ var IpWidget_EncryptedSectionWidget = function() {
      * 
      */
     var encrypt = function(plainText, password) {
-        if (!password) {
-            throw "ERROR: EncryptedSection: Empty password given for encryption.";
-        }
-        if (!plainText) {
-            return "";
-        }
+        if (!password)  { throw "ERROR: EncryptedSection: Empty password given for encryption."; }
+        if (!plainText) { return ""; }
         
         // generate a random initial vector (IV)
         var forge = window.forge;
@@ -224,9 +222,7 @@ var IpWidget_EncryptedSectionWidget = function() {
      * @see https://github.com/digitalbazaar/forge#cipher
      */
     var decrypt = function(encryptedData, password) {
-        if (!password) {
-            throw "ERROR: empty password in decrypt()";
-        }
+        if (!password) { throw "ERROR: empty password in decrypt()"; }
         if (!encryptedData || !encryptedData.encrypted) {
             debout("INFO", "Decrypting empty content. Will return empty plaintext.");
             return "";
@@ -332,50 +328,61 @@ var IpWidget_EncryptedSectionWidget = function() {
      */
     this.askForPassword = function() {
         debout("TRACE", "askForPassword");
-        var popup = $('#AskForPasswordPopup');
-        var passwordInput = popup.find('#password');
-        var confirmButton = popup.find('.ipsConfirm');
+        var that = this;
+        var unlockSymbol  = this.widgetObject.find('.encUnlockSymbol');
+        var passwordModal = this.widgetObject.find('#AskForPasswordPopup'); 
         
-        // only enable confirm button if password length > 1 char
-        passwordInput.val("");
-        var evtData = {
-            passwordInput: passwordInput,
-            confirmButton: confirmButton
-        };
-        passwordInput.keyup(evtData, checkPassword);
-        
-        // onConfirm try to unlock section with the provided password.
-        confirmButton.prop('disabled', true);
-        confirmButton.off(); // ensure we will not bind second time
-        confirmButton.on('click', $.proxy(function() {
-            popup.modal('hide');
-            this.unlockSection(passwordInput.val());
-        }, this));
-        
-        // open modal popup with bootstrap
-        popup.modal({
-            backdrop : "static"  // no close with click outside. Close with ESC is allowed.
-        }); 
-        passwordInput.focus();
+        //$('#passwordForm').bootstrapValidator('resetForm', true);
+        // add handlers (in a quite clever way inspinred by http://jsfiddle.net/jschr/3kgbG/)
+        passwordModal.find("[name='password']").val('');
+        passwordModal.find('.help-error').css('visibility', 'hidden').css('display', 'block');
+        passwordModal.modal({ backdrop: 'static', keyboard: false })
+            .on('keyup', "[name='password']", function() {
+                $('#passwordForm').find('.help-error').css('visibility', 'hidden');
+            })
+            .on('click', '.btn-default', function (e) {    // cancel button
+                passwordModal.modal('hide');
+            })
+            .on('click', '.btn-primary', function (e) {     // "delegated event" for confirm button
+                var password = passwordModal.find("[name='password']").val();
+                that.onCommitPassword(password, passwordModal);
+            });
+        passwordModal.find("[name='password']").focus();
     };
     
     /**
-     * enable confirm button only, when at least one character is entered for password
-     * @param evt jQuery event with <pre>evt.data = { passworInput, confirmButton }</pre>
+     * Called when confirm button is clicked. Will try to decrypt the section's content.
+     * If password is wrong, then an help-error is shown and modal is not closed.
+     * If successfull, then initTinyMCE.
      */
-    var checkPassword = function(evt) {
-        if (evt.data.passwordInput.val() && evt.data.passwordInput.val().length > 0) {
-            evt.data.confirmButton.prop('disabled', false);
-            /*
-            if (evt.which == 13) {
-                evt.data.confirmButton.trigger("click");  // click "Confirm" button on return
-            }
-            */
-        } else {
-            evt.data.confirmButton.prop('disabled', true);
+    this.onCommitPassword = function(password, passwordModal) {
+        debout("TRACE", "onCommitPassword");
+        try{
+            var plainText = decrypt(this.data, password);  // MAY THROW exception if password is wrong.
+        } catch (errorMsg) {
+            console.log("INFO: User entered wrong password.");
+            this.password = null;
+            passwordModal.find('.formGroup').addClass('has-error');
+            console.log(passwordModal.find('.help-error'));
+            passwordModal.find('.help-error').css('visibility', 'visible');
+            return;
         }
-    };
-    
+        passwordModal.modal('hide');
+        this.password = password;
+        this.isLocked = false;
+        this.widgetObject.find('.encryptedSection').html(plainText);
+        //MAYBE: change background of .encryptedSection
+        this.initTinyMCE();
+    } 
+
+
+
+
+
+
+
+
+
     
     // set to true if you want some debuggin output in the browsers console.
     var DEBUG = true;

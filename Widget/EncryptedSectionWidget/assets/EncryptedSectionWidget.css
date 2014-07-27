@@ -29,3 +29,12 @@
 .encryptedSection:hover .encUnlockSymbol {
     background: #F66;
 }
+
+.help-error {
+    background-color: #D9534F;
+    color: #FFF;
+    visibility: hidden;
+    font-size: 12px;
+    padding: 4px 10px;
+    width: 100%;
+}

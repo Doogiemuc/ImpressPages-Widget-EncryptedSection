@@ -13,8 +13,17 @@ class Event
      */
     public static function ipBeforeController()
     {
+        // Bootstrap Javascript
+        ipAddCss('assets/bootstrap.min.css');
+        ipAddJs ('assets/bootstrap.min.js');
+         
+        // www.http://bootstrapvalidator.com  form validation library
+        ipAddCss('assets/BootstrapValidator.min.css');
+        ipAddJs ('assets/BootstrapValidator.min.js');
+        
+        // Controller for the Encrypted Section when shown to normal users (non admins)
         ipAddCss('Widget/EncryptedSectionWidget/assets/EncryptedSectionWidget.css');
-        ipAddJs ('Widget/EncryptedSectionWidget/assets/EncryptedSectionView.js');
+        ipAddJs ('assets/EncryptedSectionController.js');
     }
  
 }
